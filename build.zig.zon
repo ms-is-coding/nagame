@@ -1,0 +1,7 @@
+.{
+    .name = .browser,
+    .fingerprint = 0xda130f3afad903c8,
+    .version = "0.1.0",
+    .minimum_zig_version = "0.15.0",
+    .paths = .{"."},
+}
