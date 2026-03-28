@@ -67,13 +67,14 @@ pub const Buffer = struct {
         var current_row: u16 = 0xFFFF;
         var current_col: u16 = 0xFFFF;
 
-        var cur_fg        = Color{};
-        var cur_bg        = Color{};
-        var cur_bold      = false;
-        var cur_italic    = false;
-        var cur_underline = false;
-        var cur_reverse   = false;
-        var needs_reset   = false;
+        var cur_fg            = Color{};
+        var cur_bg            = Color{};
+        var cur_bold          = false;
+        var cur_italic        = false;
+        var cur_underline     = false;
+        var cur_reverse       = false;
+        var cur_strikethrough = false;
+        var needs_reset       = false;
 
         for (0..self.rows) |ri| {
             const row: u16 = @intCast(ri);
@@ -92,23 +93,26 @@ pub const Buffer = struct {
                     current_col = col;
                 }
 
-                const need_reset = (cur_bold and !bc.attrs.bold) or
-                    (cur_italic    and !bc.attrs.italic) or
-                    (cur_underline and !bc.attrs.underline) or
-                    (cur_reverse   and !bc.attrs.reverse);
+                const need_reset = (cur_bold          and !bc.attrs.bold) or
+                    (cur_italic        and !bc.attrs.italic) or
+                    (cur_underline     and !bc.attrs.underline) or
+                    (cur_reverse       and !bc.attrs.reverse) or
+                    (cur_strikethrough and !bc.attrs.strikethrough);
 
                 if (need_reset or needs_reset) {
                     try escape.sgrReset(w);
                     cur_fg = .{}; cur_bg = .{};
                     cur_bold = false; cur_italic = false;
                     cur_underline = false; cur_reverse = false;
+                    cur_strikethrough = false;
                     needs_reset = false;
                 }
 
-                if (bc.attrs.bold      and !cur_bold)      { try escape.sgrBold(w);      cur_bold = true; }
-                if (bc.attrs.italic    and !cur_italic)    { try escape.sgrItalic(w);    cur_italic = true; }
-                if (bc.attrs.underline and !cur_underline) { try escape.sgrUnderline(w); cur_underline = true; }
-                if (bc.attrs.reverse   and !cur_reverse)   { try escape.sgrReverse(w);   cur_reverse = true; }
+                if (bc.attrs.bold          and !cur_bold)          { try escape.sgrBold(w);          cur_bold = true; }
+                if (bc.attrs.italic        and !cur_italic)        { try escape.sgrItalic(w);        cur_italic = true; }
+                if (bc.attrs.underline     and !cur_underline)     { try escape.sgrUnderline(w);     cur_underline = true; }
+                if (bc.attrs.reverse       and !cur_reverse)       { try escape.sgrReverse(w);       cur_reverse = true; }
+                if (bc.attrs.strikethrough and !cur_strikethrough) { try escape.sgrStrikethrough(w); cur_strikethrough = true; }
 
                 if (!colorEql(bc.fg, cur_fg)) {
                     if (bc.fg.set) try escape.sgrFg(w, bc.fg.r, bc.fg.g, bc.fg.b)

@@ -18,6 +18,8 @@ const CHROME_BOTTOM_ROWS : u16 = 1;
 
 // ── Layout context ────────────────────────────────────────────────────────────
 
+const TextAlign = enum(u2) { left = 0, center = 1, right = 2 };
+
 const LayoutCtx = struct {
     buf:            *Buffer,
     doc_row:        u32,
@@ -32,6 +34,7 @@ const LayoutCtx = struct {
     cur_fg:         Color,
     cur_bg:         Color,
     cur_attrs:      Attrs,
+    text_align:     TextAlign,
     focused_link_id:  ?u32,
     focused_row_out:  *?u32,
     // Background fill region — filled on every emitNewline when cur_bg.set
@@ -74,6 +77,7 @@ pub fn paintDom(
         .cur_fg          = fg,
         .cur_bg          = .{},
         .cur_attrs       = .{},
+        .text_align      = .left,
         .focused_link_id = focused_link_id,
         .focused_row_out = focused_row_out,
         .bg_fill_left    = 0,
@@ -106,6 +110,18 @@ fn renderElement(ctx: *LayoutCtx, node: *const WireNode) void {
         return;
     }
 
+    // Special inline-only elements
+    if (std.mem.eql(u8, tag, "img")) {
+        renderImgPlaceholder(ctx, node);
+        return;
+    }
+    if (std.mem.eql(u8, tag, "input") or std.mem.eql(u8, tag, "textarea") or
+        std.mem.eql(u8, tag, "select") or std.mem.eql(u8, tag, "button"))
+    {
+        renderFormElement(ctx, node);
+        return;
+    }
+
     const saved_fg       = ctx.cur_fg;
     const saved_bg       = ctx.cur_bg;
     const saved_attrs    = ctx.cur_attrs;
@@ -113,6 +129,7 @@ fn renderElement(ctx: *LayoutCtx, node: *const WireNode) void {
     const saved_max_col  = ctx.max_col;
     const saved_bg_left  = ctx.bg_fill_left;
     const saved_bg_right = ctx.bg_fill_right;
+    const saved_align    = ctx.text_align;
 
     const is_focused = if (ctx.focused_link_id) |fid| node.id == fid else false;
     if (is_focused) ctx.focused_row_out.* = ctx.doc_row;
@@ -122,10 +139,11 @@ fn renderElement(ctx: *LayoutCtx, node: *const WireNode) void {
     const elem_bg = wireColor(node.style.background_color);
     if (elem_bg.set) ctx.cur_bg = elem_bg;
     ctx.cur_attrs = .{
-        .bold      = std.mem.eql(u8, node.style.font_weight, "bold"),
-        .italic    = std.mem.eql(u8, node.style.font_style, "italic"),
-        .underline = std.mem.indexOf(u8, node.style.text_decoration, "underline") != null,
-        .reverse   = is_focused,
+        .bold          = std.mem.eql(u8, node.style.font_weight, "bold"),
+        .italic        = std.mem.eql(u8, node.style.font_style, "italic"),
+        .underline     = std.mem.indexOf(u8, node.style.text_decoration, "underline") != null,
+        .reverse       = is_focused,
+        .strikethrough = std.mem.indexOf(u8, node.style.text_decoration, "line-through") != null,
     };
 
     const is_inline = std.mem.eql(u8, node.style.display, "inline") or
@@ -150,6 +168,9 @@ fn renderElement(ctx: *LayoutCtx, node: *const WireNode) void {
         ctx.indent += extra_indent;
         if (ctx.col < ctx.indent) ctx.col = ctx.indent;
 
+        // Apply text-align from computed style
+        ctx.text_align = parseTextAlign(node.style.text_align);
+
         // Apply explicit absolute (px) width constraint.
         // Percentage widths are ignored here — they are consumed by flex layout
         // when the element is a flex item, and block-relative % isn't trackable.
@@ -173,15 +194,30 @@ fn renderElement(ctx: *LayoutCtx, node: *const WireNode) void {
             fillRow(ctx, saved_indent, ctx.indent, elem_bg);
         }
 
+        // For blockquote: record start row for border painting
+        const content_start_row = ctx.doc_row;
+        const is_blockquote = std.mem.eql(u8, tag, "blockquote");
+        const is_heading = isHeadingTag(tag);
+
         if (node.children) |children| {
             for (children) |*child| renderNode(ctx, child);
         }
 
         if (ctx.col > ctx.indent) emitNewline(ctx);
 
-        ctx.indent       = saved_indent;
-        ctx.col          = ctx.indent;
-        ctx.max_col      = saved_max_col;
+        // After children rendered: add heading decoration
+        if (is_heading) {
+            renderHeadingDecoration(ctx, tag, elem_fg);
+        }
+
+        // After children rendered: paint blockquote left border
+        if (is_blockquote and extra_indent > 0) {
+            paintBlockquoteBorder(ctx, content_start_row, ctx.indent -| 1);
+        }
+
+        ctx.indent        = saved_indent;
+        ctx.col           = ctx.indent;
+        ctx.max_col       = saved_max_col;
         ctx.bg_fill_left  = saved_bg_left;
         ctx.bg_fill_right = saved_bg_right;
 
@@ -192,6 +228,7 @@ fn renderElement(ctx: *LayoutCtx, node: *const WireNode) void {
     ctx.cur_fg    = saved_fg;
     ctx.cur_bg    = saved_bg;
     ctx.cur_attrs = saved_attrs;
+    ctx.text_align = saved_align;
     ctx.indent    = saved_indent;
 }
 
@@ -406,8 +443,13 @@ fn renderText(ctx: *LayoutCtx, node: *const WireNode) void {
     };
     const attrs = ctx.cur_attrs;
 
-    if (is_pre) renderPre(ctx, text, fg, bg, attrs)
-    else        renderWrapped(ctx, text, fg, bg, attrs);
+    if (is_pre) {
+        renderPre(ctx, text, fg, bg, attrs);
+    } else if (ctx.text_align != .left and ctx.col == ctx.indent) {
+        renderWrappedAligned(ctx, text, fg, bg, attrs, ctx.text_align);
+    } else {
+        renderWrapped(ctx, text, fg, bg, attrs);
+    }
 }
 
 fn renderPre(ctx: *LayoutCtx, text: []const u8, fg: Color, bg: Color, attrs: Attrs) void {
@@ -425,6 +467,98 @@ fn renderPre(ctx: *LayoutCtx, text: []const u8, fg: Color, bg: Color, attrs: Att
         } else {
             emitChar(ctx, cp, fg, bg, attrs);
         }
+    }
+}
+
+/// Render word-wrapped text with center or right alignment.
+/// Words are collected into lines, then each line is rendered with an x-offset.
+fn renderWrappedAligned(ctx: *LayoutCtx, text: []const u8, fg: Color, bg: Color, attrs: Attrs, align_mode: TextAlign) void {
+    const avail: u16 = ctx.max_col -| ctx.indent;
+    if (avail == 0) return;
+
+    // Collect words: up to 128 words, each up to 128 bytes
+    const MAX_WORDS = 128;
+    const MAX_WORD_BYTES = 128;
+    var word_store: [MAX_WORDS][MAX_WORD_BYTES]u8 = undefined;
+    var word_byte_lens: [MAX_WORDS]u8 = @splat(0);
+    var word_col_widths: [MAX_WORDS]u16 = @splat(0);
+    var word_count: usize = 0;
+
+    var wbuf: [MAX_WORD_BYTES]u8 = undefined;
+    var wlen: usize = 0;
+    var wcols: u16 = 0;
+
+    var iter = std.unicode.Utf8Iterator{ .bytes = text, .i = 0 };
+    while (iter.nextCodepoint()) |cp| {
+        const is_space = cp == ' ' or cp == '\t' or cp == '\n' or cp == '\r';
+        if (is_space) {
+            if (wcols > 0 and word_count < MAX_WORDS) {
+                const copy_len = @min(wlen, MAX_WORD_BYTES);
+                @memcpy(word_store[word_count][0..copy_len], wbuf[0..copy_len]);
+                word_byte_lens[word_count] = @intCast(copy_len);
+                word_col_widths[word_count] = wcols;
+                word_count += 1;
+                wlen = 0;
+                wcols = 0;
+            }
+        } else {
+            const w = charWidth(cp);
+            var seq: [4]u8 = undefined;
+            const seq_len = std.unicode.utf8Encode(cp, &seq) catch continue;
+            if (wlen + seq_len <= MAX_WORD_BYTES) {
+                @memcpy(wbuf[wlen..][0..seq_len], seq[0..seq_len]);
+                wlen += seq_len;
+                wcols += w;
+            }
+        }
+    }
+    if (wcols > 0 and word_count < MAX_WORDS) {
+        const copy_len = @min(wlen, MAX_WORD_BYTES);
+        @memcpy(word_store[word_count][0..copy_len], wbuf[0..copy_len]);
+        word_byte_lens[word_count] = @intCast(copy_len);
+        word_col_widths[word_count] = wcols;
+        word_count += 1;
+    }
+
+    // Layout words into lines and render each line with alignment offset
+    var line_start: usize = 0;
+    while (line_start < word_count) {
+        // Find how many words fit on this line
+        var line_end = line_start;
+        var line_width: u16 = 0;
+        while (line_end < word_count) {
+            const space: u16 = if (line_end > line_start) 1 else 0;
+            const w = word_col_widths[line_end];
+            if (line_width + space + w > avail) break;
+            line_width += space + w;
+            line_end += 1;
+        }
+        // If no word fits (word wider than avail), force at least one
+        if (line_end == line_start and line_start < word_count) {
+            line_end = line_start + 1;
+            line_width = @min(word_col_widths[line_start], avail);
+        }
+
+        // Calculate alignment offset
+        const offset: u16 = switch (align_mode) {
+            .center => (avail -| line_width) / 2,
+            .right  => avail -| line_width,
+            .left   => 0,
+        };
+
+        // Move to indented position + offset
+        ctx.col = ctx.indent + offset;
+
+        // Render words on this line
+        var wi = line_start;
+        while (wi < line_end) : (wi += 1) {
+            if (wi > line_start) emitChar(ctx, ' ', fg, bg, attrs);
+            const bytes = word_store[wi][0..word_byte_lens[wi]];
+            emitWordBytes(ctx, bytes, fg, bg, attrs);
+        }
+
+        line_start = line_end;
+        if (line_start < word_count) emitNewline(ctx);
     }
 }
 
@@ -471,6 +605,159 @@ fn flushWord(ctx: *LayoutCtx, word: []const u8, word_cols: u16, fg: Color, bg: C
 fn emitWordBytes(ctx: *LayoutCtx, bytes: []const u8, fg: Color, bg: Color, attrs: Attrs) void {
     var iter = std.unicode.Utf8Iterator{ .bytes = bytes, .i = 0 };
     while (iter.nextCodepoint()) |cp| emitChar(ctx, cp, fg, bg, attrs);
+}
+
+// ── Special element renderers ─────────────────────────────────────────────────
+
+fn isHeadingTag(tag: []const u8) bool {
+    return std.mem.eql(u8, tag, "h1") or std.mem.eql(u8, tag, "h2") or
+           std.mem.eql(u8, tag, "h3") or std.mem.eql(u8, tag, "h4");
+}
+
+fn parseTextAlign(s: []const u8) TextAlign {
+    if (std.mem.eql(u8, s, "center")) return .center;
+    if (std.mem.eql(u8, s, "right"))  return .right;
+    return .left;
+}
+
+/// Render a decoration underline after a heading element.
+fn renderHeadingDecoration(ctx: *LayoutCtx, tag: []const u8, elem_fg: Color) void {
+    const deco_char: u21 = if (std.mem.eql(u8, tag, "h1")) 0x2550   // ═ double horizontal
+                           else if (std.mem.eql(u8, tag, "h2")) 0x2500  // ─ single horizontal
+                           else 0; // h3, h4 get no underline (they already have bold)
+    if (deco_char == 0) return;
+
+    const deco_fg = if (elem_fg.set) blk: {
+        // Dim the heading color slightly for the underline
+        break :blk Color{
+            .r = @intFromFloat(@as(f32, @floatFromInt(elem_fg.r)) * 0.6),
+            .g = @intFromFloat(@as(f32, @floatFromInt(elem_fg.g)) * 0.6),
+            .b = @intFromFloat(@as(f32, @floatFromInt(elem_fg.b)) * 0.6),
+            .set = true,
+        };
+    } else Color{ .r = 80, .g = 80, .b = 100, .set = true };
+
+    var c: u16 = ctx.indent;
+    while (c < ctx.max_col) : (c += 1) {
+        emitChar(ctx, deco_char, deco_fg, ctx.default_bg, .{});
+    }
+    if (ctx.col > ctx.indent) emitNewline(ctx);
+}
+
+/// Paint a vertical bar (│) at `border_col` for every document row in [start_row, end_row).
+fn paintBlockquoteBorder(ctx: *LayoutCtx, start_row: u32, border_col: u16) void {
+    const border_fg = Color{ .r = 90, .g = 130, .b = 210, .set = true };
+    var r: u32 = start_row;
+    while (r < ctx.doc_row) : (r += 1) {
+        if (r < ctx.scroll_row) continue;
+        const vrow = r - ctx.scroll_row;
+        if (vrow >= ctx.content_rows) break;
+        const brow: u16 = @intCast(vrow + CHROME_TOP_ROWS);
+        ctx.buf.setBack(border_col, brow, .{
+            .codepoint = 0x2502, // │
+            .fg        = border_fg,
+            .bg        = ctx.default_bg,
+        });
+    }
+}
+
+/// Render an <img> element as a text placeholder.
+fn renderImgPlaceholder(ctx: *LayoutCtx, node: *const WireNode) void {
+    flushPendingMargin(ctx);
+    const placeholder_fg = Color{ .r = 100, .g = 180, .b = 100, .set = true };
+    const placeholder_bg = Color{ .r = 20,  .g = 30,  .b = 20,  .set = true };
+    const attrs = Attrs{};
+
+    emitChar(ctx, '[', placeholder_fg, placeholder_bg, attrs);
+    emitChar(ctx, 0x1F5BC, placeholder_fg, placeholder_bg, attrs); // 🖼
+    const alt = getImgAlt(node);
+    if (alt.len > 0) {
+        emitChar(ctx, ' ', placeholder_fg, placeholder_bg, attrs);
+        var iter = std.unicode.Utf8Iterator{ .bytes = alt, .i = 0 };
+        var n: u16 = 0;
+        while (iter.nextCodepoint()) |cp| {
+            if (n >= 30) {
+                emitChar(ctx, 0x2026, placeholder_fg, placeholder_bg, attrs); // …
+                break;
+            }
+            emitChar(ctx, cp, placeholder_fg, placeholder_bg, attrs);
+            n += 1;
+        }
+    }
+    emitChar(ctx, ']', placeholder_fg, placeholder_bg, attrs);
+}
+
+fn getImgAlt(node: *const WireNode) []const u8 {
+    // Pipeline encodes alt as first text child
+    if (node.children) |children| {
+        for (children) |*child| {
+            if (child.type == .text) {
+                return child.text orelse "";
+            }
+        }
+    }
+    return "";
+}
+
+/// Render an interactive form element with a visual placeholder.
+fn renderFormElement(ctx: *LayoutCtx, node: *const WireNode) void {
+    flushPendingMargin(ctx);
+    const tag = node.tag orelse "";
+    const elem_bg = Color{ .r = 40, .g = 40, .b = 60, .set = true };
+    const elem_fg = Color{ .r = 200, .g = 200, .b = 220, .set = true };
+    const bracket_fg = Color{ .r = 120, .g = 120, .b = 160, .set = true };
+    const attrs = Attrs{};
+
+    if (std.mem.eql(u8, tag, "button")) {
+        emitChar(ctx, '[', bracket_fg, elem_bg, attrs);
+        emitChar(ctx, ' ', elem_fg, elem_bg, attrs);
+        // Render button children (label text)
+        const saved_fg  = ctx.cur_fg;
+        const saved_bg  = ctx.cur_bg;
+        const saved_att = ctx.cur_attrs;
+        ctx.cur_fg  = elem_fg;
+        ctx.cur_bg  = elem_bg;
+        ctx.cur_attrs = .{ .bold = true };
+        if (node.children) |children| {
+            for (children) |*child| renderNode(ctx, child);
+        }
+        ctx.cur_fg  = saved_fg;
+        ctx.cur_bg  = saved_bg;
+        ctx.cur_attrs = saved_att;
+        emitChar(ctx, ' ', elem_fg, elem_bg, attrs);
+        emitChar(ctx, ']', bracket_fg, elem_bg, attrs);
+    } else if (std.mem.eql(u8, tag, "select")) {
+        // [▾ Option ]
+        const avail: u16 = @min(20, ctx.max_col -| ctx.col);
+        emitChar(ctx, '[', bracket_fg, elem_bg, attrs);
+        emitChar(ctx, 0x25BE, elem_fg, elem_bg, attrs); // ▾
+        emitChar(ctx, ' ', elem_fg, elem_bg, attrs);
+        var i: u16 = 3;
+        while (i < avail -| 1) : (i += 1) {
+            emitChar(ctx, '_', elem_fg, elem_bg, attrs);
+        }
+        emitChar(ctx, ']', bracket_fg, elem_bg, attrs);
+    } else {
+        // input / textarea: render as [__________]
+        const is_text = isInputText(node);
+        const avail: u16 = @min(24, ctx.max_col -| ctx.col);
+        emitChar(ctx, '[', bracket_fg, elem_bg, attrs);
+        if (!is_text) {
+            emitChar(ctx, 0x25A0, elem_fg, elem_bg, attrs); // ■ checkbox/radio placeholder
+        } else {
+            var i: u16 = 1;
+            while (i < avail -| 1) : (i += 1) {
+                emitChar(ctx, '_', elem_fg, elem_bg, attrs);
+            }
+        }
+        emitChar(ctx, ']', bracket_fg, elem_bg, attrs);
+    }
+}
+
+fn isInputText(node: *const WireNode) bool {
+    // Check for non-text input types (checkbox, radio, submit, etc.)
+    _ = node;
+    return true; // default: text input
 }
 
 // ── Horizontal rule ───────────────────────────────────────────────────────────
@@ -562,7 +849,7 @@ fn marginLines(px: f64) usize {
 
 fn marginCols(px: f64) u16 {
     if (px <= 0) return 0;
-    return @intFromFloat(@floor(px / 16.0));
+    return @intFromFloat(@floor(px / 8.0));
 }
 
 /// Resolve a WireStyle width value to terminal columns.

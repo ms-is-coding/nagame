@@ -5,7 +5,8 @@ pub const Attrs = packed struct {
     italic: bool = false,
     underline: bool = false,
     reverse: bool = false,
-    _pad: u4 = 0,
+    strikethrough: bool = false,
+    _pad: u3 = 0,
 };
 
 pub const Color = struct {

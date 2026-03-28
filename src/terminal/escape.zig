@@ -68,6 +68,10 @@ pub fn sgrReverse(w: anytype) !void {
     try w.writeAll("\x1b[7m");
 }
 
+pub fn sgrStrikethrough(w: anytype) !void {
+    try w.writeAll("\x1b[9m");
+}
+
 /// Set foreground to 24-bit RGB.
 pub fn sgrFg(w: anytype, r: u8, g: u8, b: u8) !void {
     try w.print("\x1b[38;2;{d};{d};{d}m", .{ r, g, b });

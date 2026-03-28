@@ -45,12 +45,12 @@ const DEFAULT_STYLE: WireStyle = {
 
 const BROWSER_DEFAULTS: Record<string, Partial<WireStyle>> = {
   body:       { margin: [8, 8, 8, 8] },
-  h1:         { font_weight: "bold", font_size: 32, margin: [16, 0, 16, 0] },
-  h2:         { font_weight: "bold", font_size: 24, margin: [14, 0, 14, 0] },
-  h3:         { font_weight: "bold", font_size: 20, margin: [12, 0, 12, 0] },
-  h4:         { font_weight: "bold", font_size: 16, margin: [10, 0, 10, 0] },
-  h5:         { font_weight: "bold", font_size: 13, margin: [8,  0,  8, 0] },
-  h6:         { font_weight: "bold", font_size: 11, margin: [8,  0,  8, 0] },
+  h1:         { font_weight: "bold", font_size: 32, margin: [16, 0, 8, 0], color: [230, 230, 255, 255] },
+  h2:         { font_weight: "bold", font_size: 24, margin: [14, 0, 6, 0], color: [210, 210, 245, 255] },
+  h3:         { font_weight: "bold", font_size: 20, margin: [12, 0, 4, 0], color: [195, 195, 230, 255] },
+  h4:         { font_weight: "bold", font_size: 16, margin: [10, 0, 4, 0], color: [180, 180, 215, 255] },
+  h5:         { font_weight: "bold", font_size: 13, margin: [8,  0,  2, 0] },
+  h6:         { font_weight: "bold", font_size: 11, margin: [8,  0,  2, 0] },
   p:          { margin: [16, 0, 16, 0] },
   a:          { display: "inline", color: [100, 149, 237, 255], text_decoration: "underline" },
   strong:     { display: "inline", font_weight: "bold" },
@@ -59,28 +59,34 @@ const BROWSER_DEFAULTS: Record<string, Partial<WireStyle>> = {
   i:          { display: "inline", font_style: "italic" },
   cite:       { display: "inline", font_style: "italic" },
   dfn:        { display: "inline", font_style: "italic" },
-  code:       { display: "inline", color: [255, 165, 0, 255], background_color: [30, 30, 30, 255], font_size: 14 },
-  kbd:        { display: "inline", color: [255, 165, 0, 255], background_color: [30, 30, 30, 255] },
+  code:       { display: "inline", color: [255, 185, 80, 255], background_color: [28, 28, 38, 255], font_size: 14 },
+  kbd:        { display: "inline", color: [200, 240, 200, 255], background_color: [35, 50, 35, 255] },
   samp:       { display: "inline", color: [255, 165, 0, 255], background_color: [30, 30, 30, 255] },
   tt:         { display: "inline", color: [255, 165, 0, 255] },
-  pre:        { white_space: "pre", background_color: [20, 20, 20, 255], margin: [8, 0, 8, 0], padding: [8, 8, 8, 8] },
-  blockquote: { margin: [8, 0, 8, 32], color: [180, 180, 180, 255] },
+  pre:        { white_space: "pre", background_color: [16, 16, 28, 255], margin: [12, 0, 12, 0], padding: [12, 16, 12, 16] },
+  blockquote: { margin: [8, 0, 8, 32], padding: [4, 0, 4, 8], color: [180, 180, 200, 255] },
   ul:         { margin: [8, 0, 8, 0], padding: [0, 0, 0, 24] },
   ol:         { margin: [8, 0, 8, 0], padding: [0, 0, 0, 24] },
   li:         { margin: [2, 0, 2, 0] },
   dt:         { display: "inline", font_weight: "bold" },
   dd:         { margin: [0, 0, 4, 32] },
   table:      { margin: [8, 0, 8, 0] },
-  th:         { font_weight: "bold" },
+  th:         { font_weight: "bold", background_color: [30, 30, 50, 255] },
+  td:         { padding: [4, 8, 4, 8] },
   caption:    { font_weight: "bold", text_align: "center" },
   hr:         { margin: [8, 0, 8, 0] },
-  figure:     { margin: [8, 0, 8, 0] },
-  figcaption: { font_style: "italic", color: [180, 180, 180, 255] },
-  small:      { display: "inline", font_size: 13, color: [160, 160, 160, 255] },
-  mark:       { display: "inline", background_color: [255, 255, 0, 255], color: [0, 0, 0, 255] },
-  del:        { display: "inline", text_decoration: "line-through", color: [160, 160, 160, 255] },
-  ins:        { display: "inline", text_decoration: "underline" },
-  s:          { display: "inline", text_decoration: "line-through", color: [160, 160, 160, 255] },
+  figure:     { margin: [16, 0, 16, 0] },
+  figcaption: { font_style: "italic", color: [160, 160, 180, 255], text_align: "center" },
+  small:      { display: "inline", font_size: 13, color: [150, 150, 170, 255] },
+  mark:       { display: "inline", background_color: [255, 220, 0, 255], color: [0, 0, 0, 255] },
+  del:        { display: "inline", text_decoration: "line-through", color: [140, 140, 160, 255] },
+  ins:        { display: "inline", text_decoration: "underline", color: [100, 220, 100, 255] },
+  s:          { display: "inline", text_decoration: "line-through", color: [140, 140, 160, 255] },
+  // Form elements
+  button:     { display: "inline", padding: [4, 8, 4, 8], background_color: [50, 80, 130, 255], color: [220, 230, 255, 255] },
+  input:      { display: "inline" },
+  select:     { display: "inline" },
+  textarea:   { display: "block", white_space: "pre", padding: [8, 8, 8, 8], background_color: [20, 20, 30, 255] },
   // Semantic layout elements
   nav:        { display: "flex", flex_wrap: "wrap", padding: [8, 16, 8, 16] },
   header:     { display: "flex", align_items: "center", padding: [8, 16, 8, 16] },
@@ -89,6 +95,8 @@ const BROWSER_DEFAULTS: Record<string, Partial<WireStyle>> = {
   section:    { display: "block" },
   article:    { display: "block" },
   aside:      { display: "block" },
+  details:    { display: "block", margin: [8, 0, 8, 0] },
+  summary:    { display: "block", font_weight: "bold", color: [180, 210, 255, 255] },
   // Hidden elements
   head:       { display: "none" },
   script:     { display: "none" },
@@ -107,6 +115,7 @@ const BROWSER_DEFAULTS: Record<string, Partial<WireStyle>> = {
   sup:        { display: "inline" },
   q:          { display: "inline" },
   br:         { display: "inline" },
+  img:        { display: "inline" },
 };
 
 const INHERITED_PROPS: (keyof WireStyle)[] = [
@@ -469,6 +478,42 @@ function walkNode(
   // <hr> → empty block element with tag preserved for Zig renderer
   if (tag === "hr") {
     return { id: nextId(), type: "element", tag: "hr", style, children: [] };
+  }
+
+  // <img> → placeholder element with alt text as text child
+  if (tag === "img") {
+    const alt = attrMap["alt"] ?? "";
+    const children: WireNode[] = alt
+      ? [{ id: nextId(), type: "text", text: alt, style: { ...style, display: "inline" } }]
+      : [];
+    return { id: nextId(), type: "element", tag: "img", style, children };
+  }
+
+  // <details> → show summary + optionally rest of children
+  if (tag === "details") {
+    const isOpen = "open" in attrMap;
+    const children: WireNode[] = [];
+    // Add a ▶/▼ triangle to the summary indicator
+    const triangle = isOpen ? "▼ " : "▶ ";
+    for (const child of el.childNodes) {
+      const childEl = adapter.isElementNode(child) ? (child as Element) : null;
+      const childTag = childEl?.tagName.toLowerCase() ?? "";
+      if (childTag === "summary") {
+        const summaryStyle = computeStyle("summary", {}, style, authorRules);
+        const summaryChildren: WireNode[] = [
+          { id: nextId(), type: "text", text: triangle, style: { ...summaryStyle, display: "inline" } },
+        ];
+        for (const summaryChild of (childEl?.childNodes ?? [])) {
+          const wn = walkNode(summaryChild, summaryStyle, authorRules, undefined);
+          if (wn) summaryChildren.push(wn);
+        }
+        children.push({ id: nextId(), type: "element", tag: "summary", style: summaryStyle, children: summaryChildren });
+      } else if (isOpen) {
+        const wn = walkNode(child, style, authorRules, undefined);
+        if (wn) children.push(wn);
+      }
+    }
+    return { id: nextId(), type: "element", tag: "details", style, children };
   }
 
   // Determine list context for children
